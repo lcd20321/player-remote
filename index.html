@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Player Remote</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&family=Saira+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: a pedal top panel — rig "display" up top, then rows of LED-collar knobs grouped AMP / EQ / RIG, tools folded below */
+:root {
+  --bg: #121412;          /* graphite steel */
+  --plate: #1b1e1b;
+  --plate-2: #232723;
+  --edge: #30352f;
+  --fg: #e9ece6;
+  --muted: #8d958a;
+  --accent: #6fd39a;      /* LED green */
+  --accent-dim: #2b4a37;
+  --amber: #f2c14e;       /* edited-rig lamp, like the yellow bank button */
+  --bad: #ef7a63;
+  --font-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-display: "Saira Condensed", "Arial Narrow", "IBM Plex Sans KR", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body {
+  margin: 0; color: var(--fg); font: 15px/1.5 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(16px, env(safe-area-inset-top, 0px)) 40px;
+}
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 16px; }
+
+/* top bar */
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { font: 600 1rem/1 var(--font-display); letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
+.brand b { color: var(--fg); font-weight: 700; }
+.status { display: inline-flex; align-items: center; gap: 8px; font-size: .82rem; color: var(--muted); }
+.led { width: 8px; height: 8px; border-radius: 50%; background: #4a4f49; flex: none; }
+.status[data-s="ok"] .led { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.status[data-s="warn"] .led { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.status[data-s="bad"] .led { background: var(--bad); }
+
+/* rig display */
+.display {
+  background: linear-gradient(180deg, var(--plate-2), var(--plate));
+  border: 1px solid var(--edge); border-radius: 16px; padding: 20px 22px 18px;
+  display: grid; gap: 10px; position: relative; overflow: hidden;
+}
+.display::after { /* faint glass sheen */
+  content: ""; position: absolute; inset: 0 0 55% 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.035), transparent);
+}
+.display .label { font: 600 .74rem/1 var(--font-display); letter-spacing: .2em; color: var(--muted); text-transform: uppercase; }
+.rigname {
+  font: 700 clamp(2rem, 7vw, 3.1rem)/1.05 var(--font-display); letter-spacing: .01em;
+  margin: 0; text-wrap: balance; overflow-wrap: anywhere; min-width: 0;
+}
+.rigname.idle { color: var(--muted); }
+.rigline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; }
+.lamp { display: inline-flex; align-items: center; gap: 8px; font-size: .86rem; color: var(--muted); }
+.lamp .led { width: 10px; height: 10px; background: #e7e9e4; box-shadow: 0 0 6px rgba(231,233,228,.5); }
+.lamp[data-edited="1"] { color: var(--amber); }
+.lamp[data-edited="1"] .led { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+.lamp[data-off="1"] .led { background: #4a4f49; box-shadow: none; }
+
+button {
+  font: 600 .9rem/1 var(--font-body); border-radius: 10px; padding: 11px 16px; cursor: pointer;
+  border: 1px solid var(--edge); background: var(--plate-2); color: var(--fg);
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button.go { background: var(--accent); color: #0d1a12; border-color: var(--accent); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* knob panel */
+.panel { background: var(--plate); border: 1px solid var(--edge); border-radius: 16px; padding: 16px 14px 18px; display: grid; gap: 6px; }
+.panel h2 { margin: 0 4px; font: 600 .74rem/1 var(--font-display); letter-spacing: .22em; color: var(--muted); text-transform: uppercase; }
+.knobs { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px 4px; }
+.knob {
+  display: grid; justify-items: center; gap: 2px; padding: 8px 2px 6px; border-radius: 12px;
+  touch-action: none; user-select: none; cursor: ns-resize; outline: none;
+}
+.knob:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.knob:hover { background: var(--plate-2); }
+.knob svg { width: 78px; height: 78px; overflow: visible; }
+.knob .track { fill: none; stroke: var(--edge); stroke-width: 7; stroke-linecap: round; }
+.knob .arc { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: butt; transition: stroke-dasharray .12s ease-out; }
+.knob .cap { fill: var(--plate-2); stroke: var(--edge); stroke-width: 1; }
+.knob .tick { stroke: var(--fg); stroke-width: 3; stroke-linecap: round; }
+.knob .num { font: 700 13px var(--font-mono); fill: var(--fg); text-anchor: middle; dominant-baseline: central; }
+.knob[data-unknown="1"] .arc { stroke: transparent; }
+.knob[data-unknown="1"] .num { fill: var(--muted); }
+.knob[data-changed="1"] .arc { stroke: var(--amber); }
+.knob .name { font: 600 .82rem/1.2 var(--font-display); letter-spacing: .06em; text-transform: uppercase; text-align: center; }
+.knob .sub { font-size: .68rem; color: var(--muted); min-height: 1em; }
+.knob[data-disabled="1"] { cursor: default; opacity: .55; }
+.help { margin: 2px 4px 0; font-size: .8rem; color: var(--muted); }
+
+/* folded tools */
+details { background: var(--plate); border: 1px solid var(--edge); border-radius: 14px; }
+summary { cursor: pointer; padding: 14px 16px; font: 600 .78rem/1 var(--font-display); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); list-style: none; display: flex; justify-content: space-between; }
+summary::-webkit-details-marker { display: none; }
+summary::after { content: "+"; font-family: var(--font-mono); }
+details[open] summary::after { content: "–"; }
+.fold { padding: 0 16px 16px; display: grid; gap: 12px; min-width: 0; }
+.fields { display: flex; flex-wrap: wrap; gap: 10px; }
+.fields label { display: grid; gap: 4px; font-size: .8rem; color: var(--muted); flex: 1 1 220px; min-width: 0; }
+select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--edge); border-radius: 8px; padding: 9px 10px; width: 100%; }
+.opts { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: .85rem; color: var(--muted); align-items: center; }
+.opts label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.opts input { accent-color: var(--accent); }
+.hint { margin: 0; font-size: .82rem; color: var(--muted); }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.slot { border: 1px solid var(--edge); border-radius: 10px; padding: 9px 11px; display: grid; gap: 2px; background: var(--bg); }
+.slot .p { font: 600 .72rem var(--font-mono); color: var(--muted); }
+.slot .t { font: 700 .95rem var(--font-mono); }
+.slot[data-on="1"] { border-color: var(--accent-dim); }
+.slot[data-on="1"] .p::after { content: " · ON"; color: var(--accent); }
+.log {
+  font: 12px/1.6 var(--font-mono); background: var(--bg); border: 1px solid var(--edge); border-radius: 8px;
+  padding: 10px 12px; height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-all; margin: 0;
+}
+.log .in { color: var(--accent); } .log .out { color: var(--fg); } .log .err { color: var(--bad); } .log .note { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="bar">
+    <div class="brand"><b>Player</b> Remote</div>
+    <div class="status" id="status" data-s="idle"><span class="led"></span><span id="statusText">연결 안 됨</span></div>
+  </div>
+
+  <section class="display" aria-label="현재 릭">
+    <div class="label">Rig</div>
+    <h1 class="rigname idle" id="rigName">연결을 눌러주세요</h1>
+    <div class="rigline">
+      <span class="lamp" id="lamp" data-off="1"><span class="led"></span><span id="lampText">Rig Manager를 끄고 연결하세요</span></span>
+      <div class="actions">
+        <button class="go" id="btnConnect">연결</button>
+        <button id="btnRestore" disabled>처음 값으로</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="h-amp"><h2 id="h-amp">Amp</h2><div class="knobs" id="g-amp"></div></section>
+  <section class="panel" aria-labelledby="h-eq"><h2 id="h-eq">EQ · Volume</h2><div class="knobs" id="g-eq"></div>
+    <p class="help">노브를 위아래로 끌거나 휠·방향키로 조정. Shift를 누르면 미세 조정, 더블클릭하면 이 릭의 처음 값으로 돌아가요.</p>
+  </section>
+
+  <details id="slotBox">
+    <summary>이펙트 슬롯</summary>
+    <div class="fold">
+      <div class="actions"><button id="btnScan" disabled>슬롯 스캔</button></div>
+      <p class="hint" id="slotHint">지금 릭의 이펙트 주소를 훑어서 어디에 무엇이 들어있는지 보여줘요.</p>
+      <div class="slots" id="slots"></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>연결 설정</summary>
+    <div class="fold">
+      <div class="fields">
+        <label for="selOut">보내는 포트 (→ Player)<select id="selOut"><option>연결을 먼저 누르세요</option></select></label>
+        <label for="selIn">받는 포트 (← Player)<select id="selIn"><option>연결을 먼저 누르세요</option></select></label>
+      </div>
+      <div class="opts">
+        <label><input type="checkbox" id="chkAuto" checked> 자동 새로고침</label>
+        <span>방식</span>
+        <label><input type="radio" name="mode" id="modeSysex" value="sysex" checked> SysEx</label>
+        <label><input type="radio" name="mode" id="modeNrpn" value="nrpn"> NRPN</label>
+        <span>헤더</span>
+        <label><input type="radio" name="hdr" id="hdr027f" value="027f" checked> 02 7F</label>
+        <label><input type="radio" name="hdr" id="hdr0000" value="0000"> 00 00</label>
+      </div>
+      <div class="actions"><button id="btnRead" disabled>지금 다시 읽기</button></div>
+    </div>
+  </details>
+
+  <details>
+    <summary>MIDI 기록</summary>
+    <div class="fold">
+      <pre class="log" id="log" aria-live="polite"></pre>
+      <div class="actions"><button id="btnClear">지우기</button></div>
+    </div>
+  </details>
+</main>
+
+<script>
+// Kemper Profiler MIDI: parameter = (address page, address number), 14-bit values 0..16383.
+// SysEx: F0 00 20 33 <product> <device> <fn> 00 <page> <nr> [<vMSB> <vLSB>] F7
+//   fn 0x01 single parameter change, 0x41 single parameter request (answered with 0x01),
+//   0x43 string request (answered with 0x03). NRPN: CC99 page, CC98 nr, CC6 MSB, CC38 LSB.
+const PARAMS = [
+  { g: "amp", key: "gain",     name: "Gain",       sub: "드라이브",   page: 10, nr: 4,  kind: "uni" },
+  { g: "amp", key: "def",      name: "Definition", sub: "빈티지↔모던", page: 10, nr: 6,  kind: "uni" },
+  { g: "amp", key: "clarity",  name: "Clarity",    sub: "선명도",     page: 10, nr: 7,  kind: "uni" },
+  { g: "amp", key: "sag",      name: "Sagging",    sub: "숨쉬는 느낌", page: 10, nr: 8,  kind: "uni" },
+  { g: "amp", key: "pick",     name: "Pick",       sub: "피킹 어택",   page: 10, nr: 9,  kind: "bi"  },
+  { g: "amp", key: "comp",     name: "Comp",       sub: "압축",       page: 10, nr: 10, kind: "uni" },
+  { g: "eq",  key: "bass",     name: "Bass",       sub: "87 Hz",      page: 11, nr: 4,  kind: "bi"  },
+  { g: "eq",  key: "mid",      name: "Middle",     sub: "645 Hz",     page: 11, nr: 5,  kind: "bi"  },
+  { g: "eq",  key: "treble",   name: "Treble",     sub: "4.4 kHz",    page: 11, nr: 6,  kind: "bi"  },
+  { g: "eq",  key: "presence", name: "Presence",   sub: "11.6 kHz",   page: 11, nr: 7,  kind: "bi"  },
+  { g: "eq",  key: "rigvol",   name: "Volume",     sub: "릭 볼륨",    page: 4,  nr: 1,  kind: "bi"  },
+];
+const byAddr = new Map(PARAMS.map(p => [p.page * 128 + p.nr, p]));
+const state = {}, lastSent = {}, dragging = new Set();
+let original = {};
+let access = null, out = null, inp = null, sysexOK = false;
+let rigName = null, nameSupported = false, extChanges = 0, pollTimer = 0, quickTimer = 0;
+const scan = { active: false, hits: {} };
+const SCAN_FROM = 50, SCAN_TO = 90;
+
+const $ = id => document.getElementById(id);
+const hex = arr => Array.from(arr, b => b.toString(16).padStart(2, "0").toUpperCase()).join(" ");
+const clamp = v => Math.max(0, Math.min(16383, Math.round(v)));
+function log(cls, text) {
+  const el = $("log"), line = document.createElement("span");
+  line.className = cls; line.textContent = text + "\n"; el.appendChild(line);
+  while (el.childNodes.length > 400) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(s, text) { $("status").dataset.s = s; $("statusText").textContent = text; }
+function fmt(p, v) {
+  if (v == null) return "–";
+  if (p.kind === "uni") return (v / 16383 * 10).toFixed(1);
+  const d = (v - 8192) / 8192 * 5;
+  return (Math.abs(d) < .05 ? "0.0" : (d > 0 ? "+" : "") + d.toFixed(1));
+}
+const mode = () => document.querySelector('input[name=mode]:checked').value;
+const header = () => document.querySelector('input[name=hdr]:checked').value === "027f" ? [0x02, 0x7F] : [0x00, 0x00];
+
+// ---------- knobs ----------
+// 270° LED collar from bottom-left (135°) clockwise to bottom-right (45°); path length normalised to 270
+const ARC = "M21.72 78.28 A40 40 0 1 1 78.28 78.28";
+function buildKnobs() {
+  for (const p of PARAMS) {
+    const el = document.createElement("div");
+    el.className = "knob"; el.id = "k_" + p.key; el.tabIndex = 0;
+    el.setAttribute("role", "slider"); el.setAttribute("aria-label", p.name);
+    el.setAttribute("aria-valuemin", "0"); el.setAttribute("aria-valuemax", "16383");
+    el.dataset.unknown = "1"; el.dataset.disabled = "1";
+    el.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true">
+        <path class="track" d="${ARC}" pathLength="270"/>
+        <path class="arc" d="${ARC}" pathLength="270" stroke-dasharray="0 999"/>
+        <circle class="cap" cx="50" cy="50" r="30"/>
+        <line class="tick" x1="50" y1="22" x2="50" y2="28"/>
+        <text class="num" x="50" y="53">–</text>
+      </svg>
+      <span class="name">${p.name}</span><span class="sub">${p.sub}</span>`;
+    $("g-" + p.g).appendChild(el);
+    bindKnob(el, p);
+  }
+}
+function drawKnob(p, v) {
+  const el = $("k_" + p.key);
+  const f = v / 16383;
+  const a = p.kind === "bi" ? Math.min(f, .5) * 270 : 0;
+  const b = p.kind === "bi" ? Math.max(f, .5) * 270 : f * 270;
+  const arc = el.querySelector(".arc");
+  arc.setAttribute("stroke-dasharray", `${(b - a).toFixed(2)} 999`);
+  arc.setAttribute("stroke-dashoffset", (-a).toFixed(2));
+  arc.style.opacity = b - a < 0.5 ? "0" : "1";
+  el.querySelector(".tick").setAttribute("transform", `rotate(${(-135 + f * 270).toFixed(1)} 50 50)`);
+  el.querySelector(".num").textContent = fmt(p, v);
+  el.setAttribute("aria-valuenow", v); el.setAttribute("aria-valuetext", fmt(p, v));
+  el.dataset.unknown = "0";
+  el.dataset.changed = (p.key in original && Math.abs(original[p.key] - v) > 40) ? "1" : "0";
+}
+function updateLamp() {
+  if (!out) return;
+  const edited = PARAMS.some(p => p.key in original && state[p.key] != null && Math.abs(original[p.key] - state[p.key]) > 40);
+  $("lamp").dataset.off = "0";
+  $("lamp").dataset.edited = edited ? "1" : "0";
+  $("lampText").textContent = edited ? "수정됨 · 저장하려면 Player의 릭 버튼을 길게" : "저장된 상태";
+  $("btnRestore").disabled = !edited;
+}
+function bindKnob(el, p) {
+  let startY = 0, startV = 0, pending = null, raf = 0;
+  const set = v => {
+    v = clamp(v); state[p.key] = v; drawKnob(p, v); updateLamp();
+    pending = v;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; if (pending != null) { sendParam(p, pending); pending = null; } });
+  };
+  const ready = () => el.dataset.disabled !== "1";
+  el.addEventListener("pointerdown", e => {
+    if (!ready()) return;
+    el.setPointerCapture(e.pointerId); dragging.add(p.key);
+    startY = e.clientY; startV = state[p.key] ?? (p.kind === "bi" ? 8192 : 0);
+  });
+  el.addEventListener("pointermove", e => {
+    if (!dragging.has(p.key)) return;
+    const range = e.shiftKey ? 1200 : 220;  // px for full sweep
+    set(startV + (startY - e.clientY) / range * 16383);
+  });
+  const end = () => dragging.delete(p.key);
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  el.addEventListener("wheel", e => {
+    if (!ready()) return; e.preventDefault();
+    set((state[p.key] ?? 8192) - Math.sign(e.deltaY) * (e.shiftKey ? 33 : 164));
+  }, { passive: false });
+  el.addEventListener("keydown", e => {
+    if (!ready()) return;
+    const step = e.shiftKey ? 33 : 164;
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); set((state[p.key] ?? 8192) + step); }
+    if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); set((state[p.key] ?? 8192) - step); }
+  });
+  el.addEventListener("dblclick", () => { if (ready() && p.key in original) set(original[p.key]); });
+}
+function showValue(p, v, fromDevice) {
+  if (fromDevice) {
+    if (dragging.has(p.key) || Date.now() - (lastSent[p.key] || 0) < 700) return;
+    if (state[p.key] != null && state[p.key] !== v) { extChanges++; log("note", `${p.name}: ${fmt(p, state[p.key])} → ${fmt(p, v)}`); }
+  }
+  state[p.key] = v;
+  if (!(p.key in original)) original[p.key] = v;
+  drawKnob(p, v); updateLamp();
+  if (fromDevice && $("status").dataset.s !== "ok") setStatus("ok", "연결됨");
+}
+
+// ---------- MIDI ----------
+function sendRaw(bytes, note, quiet) {
+  if (!out) { if (!quiet) log("err", "보내는 포트가 없어요."); return; }
+  try { out.send(bytes); if (!quiet) log("out", "→ " + hex(bytes) + (note ? "   " + note : "")); }
+  catch (e) { log("err", "전송 실패: " + e.message); }
+}
+function sendParam(p, v) {
+  v = clamp(v);
+  const msb = (v >> 7) & 0x7F, lsb = v & 0x7F;
+  if (mode() === "sysex" && sysexOK) sendRaw([0xF0, 0x00, 0x20, 0x33, ...header(), 0x01, 0x00, p.page, p.nr, msb, lsb, 0xF7], `${p.name} = ${fmt(p, v)}`, true);
+  else sendRaw([0xB0, 99, p.page, 0xB0, 98, p.nr, 0xB0, 6, msb, 0xB0, 38, lsb], `${p.name} = ${fmt(p, v)}`, true);
+  state[p.key] = v; lastSent[p.key] = Date.now();
+}
+const reqBytes = (page, nr) => [0xF0, 0x00, 0x20, 0x33, ...header(), 0x41, 0x00, page, nr, 0xF7];
+const nameReqBytes = () => [0xF0, 0x00, 0x20, 0x33, ...header(), 0x43, 0x00, 0x00, 0x01, 0xF7];
+
+function readAll(quiet) {
+  if (!sysexOK) { log("note", "SysEx 권한이 없어서 값을 읽을 수 없어요. (NRPN은 쓰기만 가능)"); return; }
+  sendRaw(nameReqBytes(), "릭 이름 읽기", quiet);
+  for (const p of PARAMS) sendRaw(reqBytes(p.page, p.nr), `${p.name} 읽기`, quiet);
+  if (quiet) return;
+  setTimeout(() => {
+    const got = PARAMS.filter(p => state[p.key] != null).length;
+    if (!got) { setStatus("warn", "응답 없음"); log("note", "응답이 없어요. 연결 설정에서 헤더나 포트를 바꿔보세요. Rig Manager가 켜져 있으면 꺼주세요."); }
+    else setStatus("ok", "연결됨");
+  }, 600);
+}
+function newRig(reason, valuesAlreadyIn) {
+  original = {};
+  if (valuesAlreadyIn) for (const p of PARAMS) if (state[p.key] != null) original[p.key] = state[p.key];
+  log("note", `── 릭 변경 (${reason})`);
+  updateLamp();
+  if ($("slotBox").open) $("slotHint").textContent = "릭이 바뀌었어요. 슬롯 스캔을 다시 누르면 새 릭 기준으로 보여줘요.";
+}
+function pollTick() {
+  if (!$("chkAuto").checked || !sysexOK || !out || scan.active || document.hidden) return;
+  if (!nameSupported && extChanges >= 3) newRig("여러 값이 한꺼번에 바뀜", true);
+  extChanges = 0;
+  readAll(true);
+}
+function quickRead() {
+  clearTimeout(quickTimer);
+  quickTimer = setTimeout(() => { if ($("chkAuto").checked) readAll(true); }, 150);
+}
+function setRigName(name) {
+  const el = $("rigName");
+  el.textContent = name || "(이름 없는 릭)"; el.classList.remove("idle");
+  document.title = name ? `${name} · Player Remote` : "Player Remote";
+}
+function onMessage(e) {
+  const d = e.data;
+  if (d[0] === 0xF8 || d[0] === 0xFE) return;
+  const isKemper = d[0] === 0xF0 && d[1] === 0x00 && d[2] === 0x20 && d[3] === 0x33;
+  const fn = isKemper ? d[6] : -1;
+  if (fn === 0x01 && d.length >= 13) {
+    const page = d[8], nr = d[9], v = (d[10] << 7) | d[11];
+    if (scan.active && page >= SCAN_FROM && page <= SCAN_TO) { (scan.hits[page] ||= {})[nr] = v; return; }
+    const p = byAddr.get(page * 128 + nr);
+    if (p) { showValue(p, v, true); return; }
+  }
+  if (fn === 0x03 && d[8] === 0x00 && d[9] === 0x01) {
+    let name = "";
+    for (let i = 10; i < d.length && d[i] !== 0x00 && d[i] !== 0xF7; i++) name += String.fromCharCode(d[i]);
+    nameSupported = true;
+    if (name !== rigName) {
+      const first = rigName == null;
+      rigName = name; setRigName(name);
+      if (!first) { newRig(`"${name}"`); extChanges = 0; quickRead(); }
+    }
+    return;
+  }
+  log("in", "← " + hex(d));
+  if (!isKemper || fn !== 0x01) quickRead();
+}
+
+// ---------- slot scan ----------
+async function scanSlots() {
+  if (!sysexOK || !out) return;
+  scan.active = true; scan.hits = {};
+  $("btnScan").disabled = true; $("btnScan").textContent = "스캔 중…";
+  for (let page = SCAN_FROM; page <= SCAN_TO; page++) {
+    sendRaw(reqBytes(page, 0), "", true); sendRaw(reqBytes(page, 3), "", true);
+    await new Promise(r => setTimeout(r, 15));
+  }
+  await new Promise(r => setTimeout(r, 800));
+  scan.active = false;
+  $("btnScan").disabled = false; $("btnScan").textContent = "슬롯 스캔";
+  const box = $("slots"); box.innerHTML = "";
+  const pages = Object.keys(scan.hits).map(Number).sort((a, b) => a - b).filter(pg => scan.hits[pg][0] != null);
+  if (!pages.length) { $("slotHint").textContent = "스캔 응답이 없어요."; return; }
+  let used = 0;
+  for (const page of pages) {
+    const { 0: type, 3: on } = scan.hits[page];
+    if (type) used++;
+    const s = document.createElement("div");
+    s.className = "slot"; s.dataset.on = type && on ? "1" : "0";
+    s.innerHTML = `<span class="p">페이지 ${page} · $${page.toString(16).toUpperCase()}</span><span class="t">${type ? "종류 " + type : "비어 있음"}</span>`;
+    if (!type) s.style.opacity = ".5";
+    box.appendChild(s);
+    log("note", `슬롯 페이지 ${page} ($${page.toString(16).toUpperCase()}) · 종류 ${type} · ${on == null ? "?" : on ? "켜짐" : "꺼짐"}`);
+  }
+  $("slotHint").textContent = `응답한 주소 ${pages.length}곳 중 이펙트가 들어있는 곳 ${used}곳. 결과는 MIDI 기록에도 남아요.`;
+}
+
+// ---------- ports ----------
+function pickDefault(list) { return list.find(port => /kemper|profiler|player/i.test(port.name)) || list[0]; }
+function fillPorts() {
+  const outs = Array.from(access.outputs.values()), ins = Array.from(access.inputs.values());
+  const fill = (sel, list) => {
+    const prev = sel.value;
+    sel.innerHTML = list.length ? "" : "<option>포트를 찾지 못했어요</option>";
+    for (const port of list) { const o = document.createElement("option"); o.value = port.id; o.textContent = port.name; sel.appendChild(o); }
+    if (list.some(p => p.id === prev)) sel.value = prev; else if (list.length) sel.value = pickDefault(list).id;
+  };
+  fill($("selOut"), outs); fill($("selIn"), ins);
+  bindPorts();
+  log("note", `포트 · 보내기: ${outs.map(p => p.name).join(", ") || "없음"} / 받기: ${ins.map(p => p.name).join(", ") || "없음"}`);
+}
+function bindPorts() {
+  if (inp) inp.onmidimessage = null;
+  out = access.outputs.get($("selOut").value) || null;
+  inp = access.inputs.get($("selIn").value) || null;
+  if (inp) inp.onmidimessage = onMessage;
+  const ready = !!out;
+  $("btnRead").disabled = $("btnScan").disabled = !ready || !sysexOK;
+  document.querySelectorAll(".knob").forEach(k => k.dataset.disabled = ready ? "0" : "1");
+  if (ready) setStatus("warn", sysexOK ? "읽는 중…" : "쓰기 전용 (NRPN)");
+  else setStatus("bad", "Player를 찾지 못함");
+}
+async function connect() {
+  if (!navigator.requestMIDIAccess) { setStatus("bad", "이 브라우저는 MIDI 미지원"); log("err", "크롬으로 열어주세요."); return; }
+  try { access = await navigator.requestMIDIAccess({ sysex: true }); sysexOK = true; }
+  catch (e) {
+    log("note", "SysEx 권한이 거절돼서 쓰기 전용(NRPN)으로 연결해요: " + e.message);
+    try { access = await navigator.requestMIDIAccess(); sysexOK = false; $("modeNrpn").checked = true; }
+    catch (e2) { setStatus("bad", "권한 거절됨"); log("err", "MIDI 권한을 받지 못했어요: " + e2.message); return; }
+  }
+  $("btnConnect").textContent = "다시 연결";
+  $("btnConnect").classList.remove("go");
+  access.onstatechange = () => fillPorts();
+  fillPorts();
+  if (sysexOK && out) {
+    $("rigName").textContent = "읽는 중…";
+    readAll(false);
+  }
+  clearInterval(pollTimer); pollTimer = setInterval(pollTick, 800);
+}
+
+buildKnobs();
+$("btnConnect").addEventListener("click", connect);
+$("btnRead").addEventListener("click", () => readAll(false));
+$("btnScan").addEventListener("click", scanSlots);
+$("btnRestore").addEventListener("click", () => {
+  for (const p of PARAMS) if (p.key in original) { sendParam(p, original[p.key]); showValue(p, original[p.key], false); }
+  log("note", "이 릭의 처음 값으로 되돌렸어요.");
+});
+$("btnClear").addEventListener("click", () => { $("log").textContent = ""; });
+$("selOut").addEventListener("change", bindPorts);
+$("selIn").addEventListener("change", bindPorts);
+// if the name never arrives, still show something sensible once values are in
+setInterval(() => {
+  if (out && rigName == null && !nameSupported && PARAMS.some(p => state[p.key] != null) && $("rigName").textContent === "읽는 중…")
+    { $("rigName").textContent = "현재 릭"; $("rigName").classList.remove("idle"); }
+}, 1500);
+log("note", "준비됨. Rig Manager를 끄고 연결을 누르세요.");
+</script>
+</body>
+</html>
