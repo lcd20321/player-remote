@@ -248,6 +248,8 @@ const state = {}, lastSent = {}, dragging = new Set();
 let original = {};
 let access = null, out = null, inp = null, sysexOK = false;
 let rigName = null, nameSupported = false, extChanges = 0, pollTimer = 0, quickTimer = 0;
+// stall watch: on Windows the Player sometimes stops answering until the USB cable is re-plugged
+let waitingSince = 0, stalled = false;
 const scan = { active: false, hits: {} };
 const SCAN_FROM = 50, SCAN_TO = 90;
 
@@ -466,6 +468,7 @@ const nameReqBytes = () => [0xF0, 0x00, 0x20, 0x33, ...header(), 0x43, 0x00, 0x0
 
 function readAll(quiet) {
   if (!sysexOK) { log("note", "SysEx 권한이 없어서 값을 읽을 수 없어요. (NRPN은 쓰기만 가능)"); return; }
+  if (!waitingSince) waitingSince = Date.now();
   sendRaw(nameReqBytes(), "릭 이름 읽기", quiet);
   for (const p of PARAMS) sendRaw(reqBytes(p.page, p.nr), `${p.name} 읽기`, quiet);
   if (quiet) return;
@@ -486,6 +489,11 @@ function newRig(reason, valuesAlreadyIn) {
 }
 function pollTick() {
   if (!$("chkAuto").checked || !sysexOK || !out || scan.active || document.hidden) return;
+  if (!stalled && waitingSince && Date.now() - waitingSince > 4000) {
+    stalled = true;
+    setStatus("bad", "응답 끊김 · USB 다시 꽂기");
+    log("err", "Player가 대답을 멈췄어요. 화면 숫자는 지금 멈춘 값이에요. Player USB 케이블을 뺐다가 다시 꽂으면 자동으로 이어져요.");
+  }
   if (!nameSupported && extChanges >= 3) newRig("여러 값이 한꺼번에 바뀜", true);
   extChanges = 0;
   readAll(true);
@@ -504,6 +512,10 @@ function onMessage(e) {
   if (d[0] === 0xF8 || d[0] === 0xFE) return;
   const isKemper = d[0] === 0xF0 && d[1] === 0x00 && d[2] === 0x20 && d[3] === 0x33;
   const fn = isKemper ? d[6] : -1;
+  if (isKemper) {
+    waitingSince = 0;
+    if (stalled) { stalled = false; setStatus("ok", "연결됨"); log("note", "Player가 다시 대답해요."); }
+  }
   if (fn === 0x01 && d.length >= 13) {
     const page = d[8], nr = d[9], v = (d[10] << 7) | d[11];
     if (scan.active && page >= SCAN_FROM && page <= SCAN_TO) { (scan.hits[page] ||= {})[nr] = v; return; }
