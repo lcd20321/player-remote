@@ -100,9 +100,20 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 .knob[data-disabled="1"] { cursor: default; opacity: .55; }
 .help { margin: 2px 4px 0; font-size: .8rem; color: var(--muted); }
 
-/* tone macro knobs */
-.macros { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 6px 4px; }
-.macros .knob .name { font: 700 .95rem/1.2 var(--font-body); letter-spacing: 0; text-transform: none; }
+/* tone controls: ◀ meter ▶ */
+.macros { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; margin-top: 6px; }
+.tc { display: grid; grid-template-columns: 76px 1fr 76px; align-items: center; gap: 8px; background: var(--bg); border: 1px solid var(--edge); border-radius: 12px; padding: 8px; }
+.tc[data-on="1"] { border-color: #5a4a22; }
+.tc[data-disabled="1"] { opacity: .5; }
+.tc button { padding: 0; height: 52px; border-radius: 10px; font: 700 .95rem/1.1 var(--font-body); }
+.tc button:active:not(:disabled) { background: var(--accent-dim); border-color: var(--accent); }
+.tc .mid { display: grid; justify-items: center; gap: 6px; min-width: 0; }
+.tc .ttl { font: 600 .8rem/1.2 var(--font-body); color: var(--muted); text-align: center; }
+.tc .meter { display: flex; align-items: center; gap: 3px; width: 100%; max-width: 170px; justify-content: center; }
+.tc .seg { flex: 1 1 0; min-width: 0; max-width: 12px; height: 14px; border-radius: 3px; background: var(--edge); }
+.tc .seg[data-lit="1"] { background: var(--amber); box-shadow: 0 0 6px rgba(242,193,78,.45); }
+.tc .zero { width: 2px; height: 20px; background: var(--muted); margin: 0 2px; border-radius: 1px; }
+.tc .lv { font: 700 .82rem/1 var(--font-mono); color: var(--fg); min-height: 1em; }
 .whybox { background: none; border: none; border-top: 1px solid var(--edge); border-radius: 0; margin-top: 6px; }
 .whybox summary { padding: 12px 4px 4px; }
 .why { margin: 4px 4px 0; padding-left: 18px; display: grid; gap: 4px; font-size: .8rem; color: var(--muted); }
@@ -165,11 +176,12 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
       <label class="memo"><input type="checkbox" id="chkMemory"> 릭마다 기억했다가 다시 적용</label>
     </div>
     <p class="help" id="toneHint"></p>
-    <details class="whybox"><summary>노브마다 왜 이렇게 만들었나</summary><ul class="why" id="why"></ul></details>
+    <details class="whybox"><summary>버튼마다 왜 이렇게 만들었나</summary><ul class="why" id="why"></ul></details>
   </section>
 
   <section class="panel" aria-labelledby="h-amp"><h2 id="h-amp">Amp</h2><div class="knobs" id="g-amp"></div></section>
-  <section class="panel" aria-labelledby="h-eq"><h2 id="h-eq">EQ · Volume</h2><div class="knobs" id="g-eq"></div>
+  <section class="panel" aria-labelledby="h-eq"><h2 id="h-eq">EQ · Volume</h2><div class="knobs" id="g-eq"></div></section>
+  <section class="panel" aria-labelledby="h-cab"><h2 id="h-cab">Cabinet</h2><div class="knobs" id="g-cab"></div>
     <p class="help">노브를 위아래로 끌거나 휠·방향키로 조정. Shift를 누르면 미세 조정, 더블클릭하면 이 릭의 처음 값으로 돌아가요.</p>
   </section>
 
@@ -212,31 +224,50 @@ select { font: inherit; color: var(--fg); background: var(--bg); border: 1px sol
 </main>
 
 <script>
-// ===================== 톤 노브 설정 — 여기 숫자만 바꾸면 돼요 =====================
-// 톤 노브 하나가 Player 노브 여러 개를 같이 움직여요. 가운데(0) = 이 릭의 원래 값.
-// 숫자 = 그쪽 끝까지 돌렸을 때 바뀌는 양 (Player 화면 숫자 기준). 반만 돌리면 반만 바뀌어요.
-//   0~10 노브: gain def clarity sag comp   /   -5~+5 노브: pick bass mid treble presence   /   rigvol: dB
-// oneSided: true 면 왼쪽 끝이 '그대로'이고 오른쪽으로만 돌아가요.
+// ===================== 톤 버튼 설정 — 여기 숫자만 바꾸면 돼요 =====================
+// ◀ ▶ 버튼을 한 번 누를 때(한 칸) 바뀌는 양이에요. 한쪽으로 5칸까지. 가운데(0) = 이 릭의 원래 값.
+// 숫자는 Player 화면 숫자 기준:
+//   0~10 노브: gain def clarity sag comp
+//   -5~+5 노브: pick bass mid treble presence hishift loshift char   (hishift·loshift·char = 캐비닛)
+//   rigvol: dB
+// oneSided: true 면 '그대로'에서 오른쪽으로만 가요 (보정용).
 const MACROS = [
   { id: "color", left: "몽글", right: "까랑",
-    leftSide:  { treble: -1.5, presence: -2, def: -1.5, comp: +2, pick: -1 },
-    rightSide: { presence: +2, treble: +1, def: +1.5, clarity: +1.5, gain: -0.5 },
-    why: "까랑 쪽은 Presence·Definition을 먼저 열고 Treble은 조금만 올려요. 4kHz 근처(Treble)는 498T가 쏘는 자리라 '귀 아픈 건 싫음'에 걸리기 때문이에요. 게인을 살짝 빼서 찰랑임이 뭉개지지 않게 했어요. 몽글 쪽은 고음을 닫고 압축을 걸어 둥글게 만들어요." },
+    leftSide:  { presence: -0.7, treble: -0.5, def: -0.5, comp: +0.6, pick: -0.3, hishift: -0.3 },
+    rightSide: { presence: +0.7, treble: +0.4, def: +0.5, clarity: +0.5, gain: -0.2, hishift: +0.3 },
+    why: "까랑 쪽은 Presence·Definition·캐비닛 High Shift를 먼저 올리고 Treble은 덜 올려요. 4kHz 근처(Treble)는 498T가 쏘는 자리라 '귀 아픈 건 싫음'에 걸리기 때문이에요. 게인을 살짝 빼서 찰랑임이 뭉개지지 않게 해요. 몽글 쪽은 고음을 닫고 압축을 걸어 둥글게 만들어요." },
   { id: "power", left: "깔끔", right: "파워풀",
-    leftSide:  { gain: -2, sag: -1.5, bass: -1, rigvol: +1.5 },
-    rightSide: { mid: +1.5, pick: +1.5, def: +1, gain: +1, bass: -0.5, sag: -0.5, rigvol: +2 },
-    why: "'파워풀하되 더럽지 않게'예요. 기록상 '더럽다'의 1순위 원인은 게인 과다(498T 출력이 셈)라서, 힘은 게인보다 미드·피킹·볼륨으로 내고 게인은 +1까지만 올려요. 깔끔 쪽은 게인·새깅·저음을 덜어요. 소리가 작아지면 귀가 '약하다'고 느끼니까 볼륨을 +1.5dB 채워요." },
-  { id: "place", left: "뒤로", right: "앞으로",
-    leftSide:  { mid: -1.5, rigvol: -3 },
-    rightSide: { mid: +2, bass: -1, presence: +0.5, rigvol: +3 },
-    why: "밴드에서 묻힐 때 쓰는 노브예요. 10/24·10/31 합주 분석에서 문제는 500Hz~1.5kHz 몸통이 비는 것과 크기였어요. 그래서 Mid(645Hz)와 볼륨을 같이 올리고, 저음은 베이스 자리라 조금 비켜요. 뒤로는 보컬 뒤나 성일 리드 밑에서 받쳐 줄 때 써요." },
+    leftSide:  { gain: -0.6, sag: -0.5, bass: -0.3, rigvol: +0.5 },
+    rightSide: { mid: +0.5, pick: +0.5, def: +0.3, gain: +0.3, bass: -0.2, sag: -0.2, rigvol: +0.7 },
+    why: "'파워풀하되 더럽지 않게'예요. 기록상 '더럽다'의 1순위 원인은 게인 과다(498T 출력이 셈)라서, 힘은 미드·피킹·볼륨으로 내고 게인은 조금만 올려요. 깔끔 쪽은 게인·새깅·저음을 덜어요. 작아지면 귀가 '약하다'고 느끼니까 볼륨을 조금 채워요." },
+  { id: "drive", left: "클린", right: "드라이브",
+    leftSide:  { gain: -0.8, comp: +0.3, rigvol: +0.4 },
+    rightSide: { gain: +0.6, def: +0.2, bass: -0.15, rigvol: -0.4 },
+    why: "찌그러짐 양만 바꿔요. 게인을 올리면 같은 볼륨에서도 크게 들려서 릭 볼륨을 조금 내리고, 게인을 내리면 조금 올려서 크기를 맞춰요. 드라이브 쪽은 저음을 살짝 덜어 뭉개짐(더러움)을 막아요." },
   { id: "attack", left: "부드럽게", right: "단단하게",
-    leftSide:  { pick: -2, comp: +2, sag: +1 },
-    rightSide: { pick: +2, comp: -2, sag: -1, bass: -0.5 },
-    why: "피킹이 얼마나 튀어나오는지예요. DANI 1이 '너무 부드러워'였을 때 효과를 본 게 Pick↑·압축↓였어요. 그때 게인까지 올렸다가 '더러워'졌으니 이 노브는 게인을 안 건드려요." },
-  { id: "band", left: "그대로", right: "합주실", oneSided: true,
-    rightSide: { gain: -1, bass: -1, mid: +1 },
-    why: "집에서 헤드폰(7506)으로 만든 톤을 합주실용으로 바꾸는 보정이에요. 톤 파일 5-1의 표(Gain −1 · Bass −1 · Mid +1) 그대로예요. 끝까지 돌리면 표 값만큼 바뀌어요." },
+    leftSide:  { pick: -0.6, comp: +0.6, sag: +0.3 },
+    rightSide: { pick: +0.6, comp: -0.6, sag: -0.3, bass: -0.15 },
+    why: "피킹이 얼마나 튀어나오는지예요. DANI 1이 '너무 부드러워'였을 때 효과를 본 게 Pick↑·압축↓였어요. 그때 게인까지 올렸다가 '더러워'졌으니 이 버튼은 게인을 안 건드려요." },
+  { id: "thick", left: "얇게", right: "두껍게",
+    leftSide:  { bass: -0.4, loshift: -0.4, mid: -0.2, sag: -0.3 },
+    rightSide: { bass: +0.4, loshift: +0.4, mid: +0.3, sag: +0.3 },
+    why: "소리의 몸집이에요. 저음(Bass)과 캐비닛 Low Shift, 미드를 같이 움직여요. 두껍게를 많이 올리면 합주실에서 웅웅거릴 수 있으니, 그땐 '웅웅 정리'를 같이 써요." },
+  { id: "place", left: "뒤로", right: "앞으로",
+    leftSide:  { mid: -0.5, rigvol: -1 },
+    rightSide: { mid: +0.6, bass: -0.3, presence: +0.2, rigvol: +1 },
+    why: "밴드에서 묻힐 때 써요. 10/24·10/31 합주 분석에서 문제는 500Hz~1.5kHz 몸통이 비는 것과 크기였어요. 그래서 Mid(645Hz)와 볼륨을 같이 올리고, 저음은 베이스 자리라 조금 비켜요. 뒤로는 보컬 뒤나 성일 리드 밑에서 받쳐 줄 때 써요." },
+  { id: "boom", left: "그대로", right: "웅웅 정리", oneSided: true,
+    rightSide: { bass: -0.4, loshift: -0.4, sag: -0.2 },
+    why: "합주실에서 저음이 웅웅·붕붕(80~315Hz) 할 때 써요. 기록상 합주실은 작아서 저음이 쌓이고, 베이스·킥 자리와도 겹쳐요." },
+  { id: "harsh", left: "그대로", right: "쏨 정리", oneSided: true,
+    rightSide: { treble: -0.4, hishift: -0.4, presence: -0.1 },
+    why: "귀가 아프게 쏠 때 써요. 498T와 헤드러쉬 트위터에서 2~5kHz가 도드라지는 게 원인이라 Treble과 캐비닛 High Shift를 같이 내려요. Presence(청량함)는 거의 안 건드려요." },
+  { id: "band", left: "그대로", right: "합주실 보정", oneSided: true,
+    rightSide: { gain: -0.2, bass: -0.2, mid: +0.2 },
+    why: "집에서 헤드폰(7506)으로 만든 톤을 합주실용으로 바꿔요. 5칸 = 톤 파일 5-1 표(Gain −1 · Bass −1 · Mid +1) 그대로예요." },
+  { id: "tele", left: "그대로", right: "텔레 보정", oneSided: true,
+    rightSide: { gain: +0.2, mid: +0.3, presence: +0.2, rigvol: +0.2 },
+    why: "레스폴용 릭을 텔레(넥)로 칠 때 써요. 텔레는 출력이 약해서 작고 덜 깨지니 게인·볼륨을 채우고, 넥이 뭉개지지 않게 미드·Presence를 올려요. 5칸 = 톤 파일 텔레 표(게인 한 칸↑ · Mid +1.5 · Presence +1 · 볼륨 +1dB)." },
 ];
 // ==============================================================================
 
@@ -256,6 +287,9 @@ const PARAMS = [
   { g: "eq",  key: "treble",   name: "Treble",     sub: "4.4 kHz",    page: 11, nr: 6,  kind: "bi"  },
   { g: "eq",  key: "presence", name: "Presence",   sub: "11.6 kHz",   page: 11, nr: 7,  kind: "bi"  },
   { g: "eq",  key: "rigvol",   name: "Volume",     sub: "릭 볼륨 dB", page: 4,  nr: 1,  kind: "db"  },
+  { g: "cab", key: "hishift",  name: "High Shift", sub: "고음 결",    page: 12, nr: 4,  kind: "bi"  },
+  { g: "cab", key: "loshift",  name: "Low Shift",  sub: "저음 결",    page: 12, nr: 5,  kind: "bi"  },
+  { g: "cab", key: "char",     name: "Character",  sub: "울림 성격",  page: 12, nr: 6,  kind: "bi"  },
 ];
 const byAddr = new Map(PARAMS.map(p => [p.page * 128 + p.nr, p]));
 const state = {}, lastSent = {}, dragging = new Set();
@@ -347,7 +381,7 @@ function bindKnob(el, p) {
   });
   el.addEventListener("pointermove", e => {
     if (!dragging.has(p.key)) return;
-    const range = e.shiftKey ? 1200 : 220;  // px for full sweep
+    const range = e.shiftKey ? 2000 : 600;  // px for full sweep (220 felt too twitchy on the phone)
     set(startV + (startY - e.clientY) / range * 16383);
   });
   const end = () => dragging.delete(p.key);
@@ -376,44 +410,45 @@ function showValue(p, v, fromDevice) {
   if (fromDevice && pendingReapply) maybeReapply();
 }
 
-// ---------- tone macro knobs ----------
-// Each Player knob = its original value + what the tone knobs add + any hand tweak (manual),
-// so turning a tone knob back to the centre lands exactly on the original.
+// ---------- tone controls (◀ level ▶) ----------
+// Each Player knob = its original value + what the tone levels add + any hand tweak (manual),
+// so stepping a tone control back to 0 lands exactly on the original.
 const byKey = Object.fromEntries(PARAMS.map(p => [p.key, p]));
 const unit = p => p.kind === "uni" ? 16383 / 10 : p.kind === "db" ? 8192 / 12 : 8192 / 5;
-let macro = {}, manual = {}, pendingReapply = null, macroRaf = 0;
+let macro = {}, manual = {}, pendingReapply = null, macroTimer = 0;
 const mRange = m => m.oneSided ? [0, 5] : [-5, 5];
-const mTitle = m => m.oneSided ? `${m.right} 보정` : `${m.left} ↔ ${m.right}`;
+const mTitle = m => m.oneSided ? m.right : `${m.left} ↔ ${m.right}`;
+const mKeys = m => [...Object.keys(m.leftSide || {}), ...Object.keys(m.rightSide || {})];
 const sideText = side => Object.entries(side || {}).map(([k, a]) => `${byKey[k].name} ${a > 0 ? "+" : "−"}${Math.abs(a)}${byKey[k].kind === "db" ? "dB" : ""}`).join(" · ");
-function macroAdd(key) {  // display units the tone knobs add to one Player knob
+function macroAdd(key) {  // display units the tone levels add to one Player knob
   let s = 0;
   for (const m of MACROS) {
     const v = macro[m.id] || 0; if (!v) continue;
     const side = v > 0 ? m.rightSide : m.leftSide;
-    if (side && side[key]) s += side[key] * Math.abs(v) / 5;
+    if (side && side[key]) s += side[key] * Math.abs(v);
   }
   return s;
 }
 const target = p => clamp(original[p.key] + (manual[p.key] || 0) + macroAdd(p.key) * unit(p));
 function noteManual(p, v) { if (p.key in original) manual[p.key] = v - original[p.key] - macroAdd(p.key) * unit(p); }
-const macroKeys = () => [...new Set(MACROS.flatMap(m => [...Object.keys(m.leftSide || {}), ...Object.keys(m.rightSide || {})]))];
-const macroReady = () => !!out && macroKeys().every(k => state[k] != null && k in original);
+const allMacroKeys = () => [...new Set(MACROS.flatMap(mKeys))];
+const mReady = m => !!out && mKeys(m).every(k => state[k] != null && k in original);
 function applyMacros() {
-  for (const k of macroKeys()) {
-    if (!(k in original)) continue;
+  for (const k of allMacroKeys()) {
+    if (!(k in original) || state[k] == null) continue;
     const p = byKey[k], t = target(p);
     if (t !== state[k]) { sendParam(p, t); showValue(p, t, false); }
   }
 }
 function setMacro(m, v) {
-  if (!macroReady()) return;
+  if (!mReady(m)) return;
   const [lo, hi] = mRange(m);
-  v = Math.round(Math.max(lo, Math.min(hi, v)) * 10) / 10;
+  v = Math.max(lo, Math.min(hi, Math.round(v)));
   if ((macro[m.id] || 0) === v) return;
   macro[m.id] = v; drawMacro(m);
-  if (!macroRaf) macroRaf = setTimeout(() => { macroRaf = 0; applyMacros(); saveMem(); }, 16);
+  if (!macroTimer) macroTimer = setTimeout(() => { macroTimer = 0; applyMacros(); saveMem(); }, 16);
 }
-const MEM_KEY = "playerRemote.macroMemory", MEM_ON = "playerRemote.memoryOn";
+const MEM_KEY = "playerRemote.toneLevels", MEM_ON = "playerRemote.memoryOn";
 function loadMem() { try { return JSON.parse(localStorage.getItem(MEM_KEY)) || {}; } catch { return {}; } }
 function saveMem() {
   if (!$("chkMemory").checked || !nameSupported || rigName == null) return;
@@ -424,71 +459,51 @@ function saveMem() {
 function buildMacros() {
   for (const m of MACROS) {
     for (const side of [m.leftSide, m.rightSide]) if (side) for (const k of Object.keys(side))
-      if (!byKey[k]) { log("err", `톤 노브 설정 오류: "${mTitle(m)}"의 "${k}"는 없는 이름이라 뺐어요.`); delete side[k]; }
+      if (!byKey[k]) { log("err", `톤 설정 오류: "${mTitle(m)}"의 "${k}"는 없는 이름이라 뺐어요.`); delete side[k]; }
     const el = document.createElement("div");
-    el.className = "knob"; el.id = "m_" + m.id; el.tabIndex = 0; el.dataset.disabled = "1";
-    el.setAttribute("role", "slider"); el.setAttribute("aria-label", mTitle(m));
-    const [lo, hi] = mRange(m);
-    el.setAttribute("aria-valuemin", lo); el.setAttribute("aria-valuemax", hi);
-    el.title = (m.leftSide ? `${m.left}: ${sideText(m.leftSide)}\n` : "") + `${m.right}: ${sideText(m.rightSide)}`;
-    el.innerHTML = `<svg viewBox="0 0 100 100" aria-hidden="true">
-        <path class="track" d="${ARC}" pathLength="270"/>
-        <path class="arc" d="${ARC}" pathLength="270" stroke-dasharray="0 999"/>
-        <circle class="cap" cx="50" cy="50" r="30"/>
-        <line class="tick" x1="50" y1="22" x2="50" y2="28"/>
-        <text class="num" x="50" y="53">0</text>
-      </svg>
-      <span class="name">${mTitle(m)}</span>`;
+    el.className = "tc"; el.id = "m_" + m.id; el.dataset.disabled = "1";
+    el.setAttribute("role", "group"); el.setAttribute("aria-label", mTitle(m));
+    const segs = n => Array.from({ length: n }, () => '<span class="seg"></span>').join("");
+    el.innerHTML = `<button class="dn" disabled>${m.oneSided ? "−" : "◀ " + m.left}</button>
+      <div class="mid">${m.oneSided ? `<span class="ttl">${m.right}</span>` : ""}
+        <div class="meter" aria-hidden="true">${m.oneSided ? segs(5) : segs(5) + '<span class="zero"></span>' + segs(5)}</div>
+        <span class="lv" aria-live="polite"></span></div>
+      <button class="up" disabled>${m.oneSided ? "+" : m.right + " ▶"}</button>`;
+    el.querySelector(".dn").title = m.oneSided ? `${m.right} 한 칸 덜` : `${m.left}: 한 칸에 ${sideText(m.leftSide)}`;
+    el.querySelector(".up").title = `${m.right}: 한 칸에 ${sideText(m.rightSide)}`;
+    el.querySelector(".dn").addEventListener("click", () => setMacro(m, (macro[m.id] || 0) - 1));
+    el.querySelector(".up").addEventListener("click", () => setMacro(m, (macro[m.id] || 0) + 1));
     $("macros").appendChild(el);
-    bindMacro(el, m); drawMacro(m);
+    drawMacro(m);
     const li = document.createElement("li");
     li.innerHTML = `<b>${mTitle(m)}</b> — ${m.why}<br>` +
-      (m.leftSide ? `${m.left} 끝: ${sideText(m.leftSide)}<br>` : "") + `${m.right} 끝: ${sideText(m.rightSide)}`;
+      (m.leftSide ? `${m.left} 한 칸: ${sideText(m.leftSide)}<br>` : "") + `${m.right} 한 칸: ${sideText(m.rightSide)}`;
     $("why").appendChild(li);
   }
 }
 function drawMacro(m) {
-  const el = $("m_" + m.id), v = macro[m.id] || 0, [lo, hi] = mRange(m);
-  const f = (v - lo) / (hi - lo), mid = m.oneSided ? 0 : .5;
-  const a = Math.min(f, mid) * 270, b = Math.max(f, mid) * 270;
-  const arc = el.querySelector(".arc");
-  arc.setAttribute("stroke-dasharray", `${(b - a).toFixed(2)} 999`);
-  arc.setAttribute("stroke-dashoffset", (-a).toFixed(2));
-  arc.style.opacity = b - a < 0.5 ? "0" : "1";
-  el.querySelector(".tick").setAttribute("transform", `rotate(${(-135 + f * 270).toFixed(1)} 50 50)`);
-  const txt = v === 0 ? "0" : (v > 0 && !m.oneSided ? "+" : "") + v.toFixed(1);
-  el.querySelector(".num").textContent = txt;
-  el.setAttribute("aria-valuenow", v);
-  el.setAttribute("aria-valuetext", v === 0 ? "원래 값" : `${v > 0 ? m.right : m.left} 쪽 ${Math.abs(v).toFixed(1)}`);
-  el.dataset.unknown = "0";
-  el.dataset.changed = v !== 0 ? "1" : "0";
-}
-function bindMacro(el, m) {
-  const [lo, hi] = mRange(m);
-  let startY = 0, startV = 0, drag = false;
-  const ready = () => el.dataset.disabled !== "1";
-  el.addEventListener("pointerdown", e => { if (!ready()) return; el.setPointerCapture(e.pointerId); drag = true; startY = e.clientY; startV = macro[m.id] || 0; });
-  el.addEventListener("pointermove", e => { if (drag) setMacro(m, startV + (startY - e.clientY) / (e.shiftKey ? 1200 : 220) * (hi - lo)); });
-  const end = () => { drag = false; };
-  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
-  el.addEventListener("wheel", e => { if (!ready()) return; e.preventDefault(); setMacro(m, (macro[m.id] || 0) - Math.sign(e.deltaY) * (e.shiftKey ? .1 : .5)); }, { passive: false });
-  el.addEventListener("keydown", e => {
-    if (!ready()) return;
-    const step = e.shiftKey ? .1 : .5;
-    if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); setMacro(m, (macro[m.id] || 0) + step); }
-    if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); setMacro(m, (macro[m.id] || 0) - step); }
+  const el = $("m_" + m.id); if (!el) return;
+  const v = macro[m.id] || 0, [lo, hi] = mRange(m), ready = mReady(m);
+  const segs = el.querySelectorAll(".seg");
+  segs.forEach((s, i) => {
+    // bipolar: segs 0-4 = left side (4 nearest the centre), 5-9 = right side (5 nearest the centre)
+    const lit = m.oneSided ? i < v : i < 5 ? v < 0 && 5 - i <= -v : v > 0 && i - 4 <= v;
+    s.dataset.lit = lit ? "1" : "0";
   });
-  el.addEventListener("dblclick", () => { if (ready()) setMacro(m, 0); });
+  el.querySelector(".lv").textContent = v === 0 ? (m.oneSided ? "끔" : "원래 값") : m.oneSided ? `${v} / 5` : `${v > 0 ? m.right : m.left} ${Math.abs(v)}`;
+  el.dataset.on = v !== 0 ? "1" : "0";
+  el.dataset.disabled = ready ? "0" : "1";
+  el.querySelector(".dn").disabled = !ready || v <= lo;
+  el.querySelector(".up").disabled = !ready || v >= hi;
 }
 function drawMacros() {
-  const ready = macroReady();
-  for (const m of MACROS) { const el = $("m_" + m.id); if (el) { el.dataset.disabled = ready ? "0" : "1"; drawMacro(m); } }
-  const mem = $("chkMemory").checked;
+  for (const m of MACROS) drawMacro(m);
+  const ready = MACROS.some(mReady), mem = $("chkMemory").checked;
   $("toneHint").textContent =
-    !ready ? "연결하고 값을 다 읽으면 돌아가요. 가운데(0)가 이 릭의 원래 값이고, 끝으로 갈수록 많이 바뀌어요. 노브를 더블클릭하면 가운데로 돌아가요."
+    !ready ? "연결하고 값을 다 읽으면 눌러져요. 가운데(0)가 이 릭의 원래 값이고, 한 번 누를 때마다 한 칸씩(최대 5칸) 바뀌어요."
     : mem && !nameSupported ? "릭 이름을 못 읽고 있어서 '기억'은 아직 작동하지 않아요."
-    : mem ? "노브 위치를 릭 이름별로 기억했다가, 그 릭을 다시 부르면 자동으로 적용해요. Player에서 길게 눌러 저장할 거면 이 칸은 끄세요(두 번 적용돼요). '원래대로'를 누르면 이 릭의 기억도 지워져요."
-    : "위아래로 끌어서 돌려요. 노브를 더블클릭하면 가운데로 돌아가요. 마음에 들면 Player의 릭 버튼을 길게 눌러 저장하세요. 저장 안 하면 릭을 바꿀 때 사라져요.";
+    : mem ? "칸 수를 릭 이름별로 기억했다가, 그 릭을 다시 부르면 자동으로 적용해요. Player에서 길게 눌러 저장할 거면 이 칸은 끄세요(두 번 적용돼요). '원래대로'를 누르면 이 릭의 기억도 지워져요."
+    : "한 번 누를 때마다 한 칸씩, 최대 5칸. 반대쪽을 누르면 돌아가요. 마음에 들면 Player의 릭 버튼을 길게 눌러 저장하세요. 저장 안 하면 릭을 바꿀 때 사라져요.";
 }
 function restoreAll() {
   macro = {}; manual = {}; pendingReapply = null;
@@ -496,7 +511,7 @@ function restoreAll() {
   saveMem(); drawMacros();
   log("note", "이 릭의 처음 값으로 되돌렸어요.");
 }
-// remembered knob positions are applied once the new rig's own values have all been read
+// remembered levels are applied once the new rig's own values have all been read
 function armReapply() {
   pendingReapply = null;
   if (!$("chkMemory").checked || !nameSupported || rigName == null) return;
@@ -504,10 +519,10 @@ function armReapply() {
   if (c && Object.values(c).some(v => v)) { pendingReapply = c; maybeReapply(); }
 }
 function maybeReapply() {
-  if (!pendingReapply || !macroReady()) return;
+  if (!pendingReapply || !MACROS.every(m => !pendingReapply[m.id] || mReady(m))) return;
   const c = pendingReapply; pendingReapply = null;
   macro = { ...c }; applyMacros(); drawMacros();
-  log("note", `"${rigName}" 기억해 둔 톤 노브 다시 적용: ` + MACROS.filter(m => c[m.id]).map(m => `${mTitle(m)} ${c[m.id] > 0 ? "+" : ""}${c[m.id]}`).join(", "));
+  log("note", `"${rigName}" 기억해 둔 톤 다시 적용: ` + MACROS.filter(m => c[m.id]).map(m => `${mTitle(m)} ${c[m.id] > 0 && !m.oneSided ? "+" : ""}${c[m.id]}`).join(", "));
 }
 
 // ---------- MIDI ----------
